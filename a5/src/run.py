@@ -43,6 +43,7 @@ device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
 # vocab from the pretraining corpus.)
 block_size = 128
 text = open(args.pretrain_corpus_path).read()
+print(args.pretrain_corpus_path)
 pretrain_dataset = dataset.CharCorruptionDataset(text, block_size)
 
 # We don't suggest you change these hyperparameters, as they're known to work.
@@ -57,7 +58,9 @@ Don't change above here; write your code below
 if args.variant == 'vanilla':
     model = model.GPT(mconf) # TODO [part c]: Make some model here
 elif args.variant == 'synthesizer':
-    pass # TODO [part g]: Make some other model here
+    mconf.synthesizer = True
+    model = model.GPT(mconf) # TODO [part g]: Make some other model here
+    model.to(device)
 
 # From here on, your code should be identical independent of which
 # variant (vanilla or synthesizer) has been chosen.
@@ -123,14 +126,23 @@ elif args.function == 'finetune':
     #         final_tokens=200*len(pretrain_dataset)*block_size
     #         num_workers=4
     if args.reading_params_path is not None:
-        model.load_state_dict(torch.load(args.reading_param_path))
-    tconf = trainer.TrainerConfig(max_epochs=75,
-                          batch_size=256,
-                          learning_rate=6e-4,
-                          lr_decay=True,
-                          warmup_tokens=512*20,
-                          final_tokens=200*len(pretrain_dataset)*block_size,
-                          num_workers=4)
+        model.load_state_dict(torch.load(args.reading_params_path))
+        model = model.to(device)
+        tconf = trainer.TrainerConfig(max_epochs=10,
+                                      batch_size=256,
+                                      learning_rate=6e-4,
+                                      lr_decay=True,
+                                      warmup_tokens=512 * 20,
+                                      final_tokens=200 * len(pretrain_dataset) * block_size,
+                                      num_workers=4)
+    else:
+        tconf = trainer.TrainerConfig(max_epochs=75,
+                              batch_size=256,
+                              learning_rate=6e-4,
+                              lr_decay=True,
+                              warmup_tokens=512*20,
+                              final_tokens=200*len(pretrain_dataset)*block_size,
+                              num_workers=4)
     text = open(args.finetune_corpus_path).read()
     train_dataset = dataset.NameDataset(pretrain_dataset, text)
     trainer = trainer.Trainer(model, train_dataset, None, tconf)
@@ -149,7 +161,7 @@ elif args.function == 'evaluate':
         predictions = []
         for line in tqdm(open(args.eval_corpus_path)):
             x = line.split('\t')[0]
-            x = x + '⁇'
+            x = x + '??'
             x = torch.tensor([pretrain_dataset.stoi[s] for s in x], dtype=torch.long)[None,...].to(device)
             pred = utils.sample(model, x, 32, sample=False)[0]
             completion = ''.join([pretrain_dataset.itos[int(i)] for i in pred])

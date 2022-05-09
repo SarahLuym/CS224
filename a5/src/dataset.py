@@ -2,6 +2,7 @@ import random
 import torch
 from torch.utils.data import Dataset
 import argparse
+import numpy as np
 
 """
 The input-output pairs (x, y) of the NameDataset are of the following form:
@@ -170,35 +171,66 @@ class CharCorruptionDataset(Dataset):
         # TODO [part e]: see spec above
         document = self.data[idx]
 
-        # 1. Randomly truncate the document to a length no less than 4 characters, and no more than int(self.block_size*7/8) characters.
-        doc_len = len(document)
-        trunc_len = random.randint(5, int(self.block_size*7/8))
-        trunc_len = min(doc_len, trunc_len)
-        trunc_doc = document[:trunc_len]
-
-        # 2. break the (truncated) document into three substrings: [prefix] [masked_content] [suffix]. The length of [masked_content] should be random, and 1/4 the length of the truncated document on average.
-        masked_len = random.randint(int(1 / 8 * trunc_len), int(3 / 8 * trunc_len))
+        # # 1. Randomly truncate the document to a length no less than 4 characters, and no more than int(self.block_size*7/8) characters.
+        # doc_len = len(document)
+        # trunc_len = random.randint(4, int(self.block_size*7/8))
+        # if trunc_len <= doc_len:
+        #     trunc_doc = document[:trunc_len]
+        # else:
+        #     trunc_doc = document
+        #
+        # # 2. break the (truncated) document into three substrings: [prefix] [masked_content] [suffix]. The length of [masked_content] should be random, and 1/4 the length of the truncated document on average.
+        # masked_len = random.randint(int(1 / 8 * trunc_len), int(3 / 8 * trunc_len))
         # assert trunc_len >= 4, (doc_len, trunc_len, masked_len, document, idx)
-        prefix_len = random.randint(1, trunc_len - masked_len - 1)
+        # prefix_len = random.randint(1, trunc_len - masked_len - 1)
+        #
+        # prefix = trunc_doc[:prefix_len]
+        # masked_content = trunc_doc[prefix_len: prefix_len+masked_len]
+        # suffix = trunc_doc[prefix_len+masked_len:]
+        #
+        # # 3. Rearrange these substrings into the following form: [prefix] MASK_CHAR [suffix] MASK_CHAR [masked_content] [pads]
+        # masked_string = prefix + self.MASK_CHAR + suffix + self.MASK_CHAR + masked_content + self.PAD_CHAR * (self.block_size - trunc_len - 2)
+        # assert len(masked_string) == self.block_size
+        #
+        # # 4. Take the input string to be masked_string[:-1], and the output string to be masked_string[1:]
+        # x = masked_string[:-1]
+        # y = masked_string[1:]
+        #
+        # # 5. Making use of the vocabulary that you defined, encode the resulting input and output strings as Long tensors and return the resulting data point.
+        # x = torch.LongTensor([self.stoi[c] for c in x])
+        # y = torch.LongTensor([self.stoi[c] for c in y])
+        # return x, y
 
-        prefix = trunc_doc[:prefix_len]
-        masked_content = trunc_doc[prefix_len: prefix_len+masked_len]
-        suffix = trunc_doc[prefix_len+masked_len:]
+        document = self.data[idx]
+        document_len = len(document)
+        truncate_len = random.randint(4, int(self.block_size * 7 / 8))
+        if truncate_len >= document_len:
+            truncated_document = document
+        else:
+            truncated_document = document[:truncate_len]  # truncate from start
 
-        # 3. Rearrange these substrings into the following form: [prefix] MASK_CHAR [suffix] MASK_CHAR [masked_content] [pads]
-        masked_string = prefix + self.MASK_CHAR + suffix + self.MASK_CHAR + masked_content + self.PAD_CHAR * (self.block_size - trunc_len - 2)
+        mean_masked_content_len = len(truncated_document) / 4  # float
+        noise = random.uniform(-1 / 8, 1 / 8) * len(truncated_document)  # float
+        masked_content_len = mean_masked_content_len + noise  # add some randomness
 
-        # 4. Take the input string to be masked_string[:-1], and the output string to be masked_string[1:]
-        x = masked_string[:-1]
+        masked_content_len = int(np.clip(masked_content_len, 1, truncate_len - 2))
+        start_idx = random.randint(1, truncate_len - masked_content_len - 1)
+        prefix = truncated_document[:start_idx]
+        masked_content = truncated_document[start_idx: start_idx + masked_content_len]
+        suffix = truncated_document[start_idx + masked_content_len:]
+
+        masked_string = prefix + self.MASK_CHAR + suffix + self.MASK_CHAR + masked_content  # + self.MASK_CHAR
+        masked_string += self.PAD_CHAR * (self.block_size - len(masked_string))
+        assert len(masked_string) == self.block_size
+
+        x = masked_string[:-1]  # block_size - 1
         y = masked_string[1:]
 
-        # 5. Making use of the vocabulary that you defined, encode the resulting input and output strings as Long tensors and return the resulting data point.
-        x = torch.LongTensor([self.stoi[c] for c in x])
-        y = torch.LongTensor([self.stoi[c] for c in y])
+        x = torch.tensor([self.stoi[c] for c in x], dtype=torch.long)
+        y = torch.tensor([self.stoi[c] for c in y], dtype=torch.long)
+
         return x, y
 
-
-        raise NotImplementedError
 
 """
 Code under here is strictly for your debugging purposes; feel free to modify
